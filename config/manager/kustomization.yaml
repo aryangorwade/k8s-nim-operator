@@ -4,5 +4,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: nvcr.io/nvidia/cloud-native/nim-operator
-  newTag: v1.0.0
+  newName: localhost:5000/k8s-nim-operator
+  newTag: dev

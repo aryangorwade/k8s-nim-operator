@@ -2,8 +2,8 @@ operator:
   replicas: 1
   upgradeCRD: true
   image:
-    repository: ghcr.io/nvidia/k8s-nim-operator
-    tag: main
+    repository: localhost:5000/k8s-nim-operator
+    tag: dev
     pullSecrets: []
     pullPolicy: Always
   args:

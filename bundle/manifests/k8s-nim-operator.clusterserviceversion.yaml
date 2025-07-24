@@ -1389,6 +1389,9 @@ spec:
                       successThreshold: 1
                       timeoutSeconds: 1
                     name: manager
+                    volumeMounts:
+                      - mountPath: /tmp/k8s-webhook-server/serving-certs
+                        name: webhook-cert
                     readinessProbe:
                       failureThreshold: 3
                       httpGet:
@@ -1412,6 +1415,10 @@ spec:
                     terminationMessagePolicy: File
                 dnsPolicy: ClusterFirst
                 imagePullSecrets: []
+                volumes: 
+                  - name: webhook-cert
+                    secret:
+                      secretName: k8s-nim-operator-service-cert
                 restartPolicy: Always
                 serviceAccountName: k8s-nim-operator
                 securityContext:
@@ -1424,6 +1431,7 @@ spec:
                   - effect: NoSchedule
                     key: node-role.kubernetes.io/control-plane
                     operator: Equal
+
   installModes:
     - type: OwnNamespace
       supported: false
@@ -1433,3 +1441,44 @@ spec:
       supported: false
     - type: AllNamespaces
       supported: true
+  webhookdefinitions:
+  - type: ValidatingAdmissionWebhook
+    admissionReviewVersions:
+    - v1
+    containerPort: 9443
+    targetPort: 9443
+    deploymentName: k8s-nim-operator
+    failurePolicy: Fail
+    generateName: vnimcache-v1alpha1.kb.io
+    rules:
+    - apiGroups:
+      - apps.nvidia.com
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - nimcaches
+    sideEffects: None
+    webhookPath: /validate-apps-nvidia-com-v1alpha1-nimcache
+  - type: ValidatingAdmissionWebhook
+    admissionReviewVersions:
+    - v1
+    containerPort: 9443
+    targetPort: 9443
+    deploymentName: k8s-nim-operator
+    failurePolicy: Fail
+    generateName: vnimservice-v1alpha1.kb.io
+    rules:
+    - apiGroups:
+      - apps.nvidia.com
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - nimservices
+    sideEffects: None
+    webhookPath: /validate-apps-nvidia-com-v1alpha1-nimservice
