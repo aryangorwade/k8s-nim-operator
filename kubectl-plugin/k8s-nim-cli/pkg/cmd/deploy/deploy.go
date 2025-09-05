@@ -30,8 +30,8 @@ func NewDeployCommand(cmdFactory cmdutil.Factory, streams genericclioptions.IOSt
 
 	cmd := &cobra.Command{
 		Use:          "deploy NAME",
-		Short:        "Interactively deploy a NIM Service custom resource.",
-		Long:         `Given an image name, walks the user through deploying any NIMService.`,
+		Short:        "Interactively deploy a NIMService custom resource.",
+		Long:         `Given an image name and some more information, deploys a NIMService running a universal nim for the user (with/without NIMCache).`,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			switch len(args) {
@@ -204,14 +204,15 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 		cacheCmdArgs := []string{
 			options.ResourceName + "-cache",
 			"--nim-source=" + imgSource,
-			"--model-puller=" + modelPuller,
 		}
 		if imgSource == "ngc" {
-			cacheCmdArgs = append(cacheCmdArgs, "--ngc-model-endpoint="+MULTI_LLM_NIM_REPO+":"+MULTI_LLM_TAG)
+			cacheCmdArgs = append(cacheCmdArgs, "--ngc-model-endpoint="+MULTI_LLM_NIM_REPO+":"+MULTI_LLM_TAG, "--model-puller=" + modelPuller)
 		} else {
 			cacheCmdArgs = append(cacheCmdArgs, "--alt-endpoint="+endPoint)
 			cacheCmdArgs = append(cacheCmdArgs, "--alt-namespace="+altNamespace)
 			cacheCmdArgs = append(cacheCmdArgs, "--model-name="+hfModelName)
+			cacheCmdArgs = append(cacheCmdArgs, "--model-puller="+modelPuller)
+			cacheCmdArgs = append(cacheCmdArgs, "--auth-secret=hf-api-secret")
 		}
 		cacheCmdArgs = append(cacheCmdArgs, pvcFlags...)
 		cacheCmd.SetArgs(cacheCmdArgs)
