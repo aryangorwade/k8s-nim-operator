@@ -68,9 +68,7 @@ func NewDeployCommand(cmdFactory cmdutil.Factory, streams genericclioptions.IOSt
 
 func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient client.Client, serviceCmd *cobra.Command, cacheCmd *cobra.Command) (error, error) {
 	var cacheModel bool
-	var nimModelName string
 	var imgSource string
-	var modelPuller string
 	var endPoint string
 	var altNamespace string
 	var hfModelName string
@@ -101,13 +99,12 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 
 	// No: ask for NIM_MODEL_NAME. proceed to PVC creation steps (skip to step 3).
 	if !cacheModel {
-		fmt.Fprint(options.IoStreams.Out, "Enter the model name to cache: ")
+		fmt.Fprint(options.IoStreams.Out, "Enter the Model URL (eg: ngc://nvidia/nemo/<model_name>:2.0): ")
 		response, err := reader.ReadString('\n')
 		if err != nil {
 			return fmt.Errorf("failed to read model name: %w", err), nil
 		}
-		nimModelName = strings.TrimSpace(response)
-		fmt.Fprintf(options.IoStreams.Out, "Model name set to: %s\n", nimModelName)
+		endPoint = strings.TrimSpace(response)
 	} else {
 		// Yes, continue below.
 		// 2) Ask for image source.
@@ -129,13 +126,13 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 		case "ngc":
 			// If ngc, ask for modelPuller. warn about expected ngc-secret.
 			fmt.Fprint(options.IoStreams.Out, "Note: ngc-secret must exist and be a defined pull secret.")
-			fmt.Fprint(options.IoStreams.Out, "Enter model puller for caching: ")
+			fmt.Fprint(options.IoStreams.Out, "Enter the Model URL (eg: ngc://nvidia/nemo/<model_name>:2.0): ")
 			response, err := reader.ReadString('\n')
 			if err != nil {
 				return fmt.Errorf("failed to read model puller: %w", err), nil
 			}
-			modelPuller = strings.TrimSpace(response)
-
+			endPoint = strings.TrimSpace(response)
+	
 		default:
 			// Ask for endpoint & modelName. Warn about expected hf-api-secret.
 			fmt.Fprint(options.IoStreams.Out, "Note: ngc-secret must exist and be a defined pull secret")
@@ -192,7 +189,7 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 			options.ResourceName,
 			"--image-repository=" + MULTI_LLM_NIM_REPO,
 			"--tag=" + MULTI_LLM_TAG,
-			"--env=" + NIM_MODEL_NAME_ENV_VAR + "," + nimModelName,
+			"--env=" + NIM_MODEL_NAME_ENV_VAR + "," + endPoint,
 			"--pull-secret=ngc-secret",
 			"--auth-secret=ngc-api-secret",
 		}
@@ -205,23 +202,29 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 			options.ResourceName + "-cache",
 			"--nim-source=" + imgSource,
 		}
+
+		cacheCmdArgs = append(cacheCmdArgs, "--model-puller=" + MULTI_LLM_NIM_REPO + ":" + MULTI_LLM_TAG)
+
 		if imgSource == "ngc" {
-			cacheCmdArgs = append(cacheCmdArgs, "--ngc-model-endpoint="+MULTI_LLM_NIM_REPO+":"+MULTI_LLM_TAG, "--model-puller=" + modelPuller)
+			cacheCmdArgs = append(cacheCmdArgs, "--ngc-model-endpoint=" + endPoint)
 		} else {
 			cacheCmdArgs = append(cacheCmdArgs, "--alt-endpoint="+endPoint)
 			cacheCmdArgs = append(cacheCmdArgs, "--alt-namespace="+altNamespace)
 			cacheCmdArgs = append(cacheCmdArgs, "--model-name="+hfModelName)
-			cacheCmdArgs = append(cacheCmdArgs, "--model-puller="+modelPuller)
 			cacheCmdArgs = append(cacheCmdArgs, "--auth-secret=hf-api-secret")
 		}
 		cacheCmdArgs = append(cacheCmdArgs, pvcFlags...)
 		cacheCmd.SetArgs(cacheCmdArgs)
+		
+		// Get NIM_MODEL_NAME.
+		// nvcr.io/nim/meta/llama-3.2-1b-instruct:1.12.0 => nvidia/nemo/llama-3_2-1b-instruct
 
 		// Assemble NIMService flags.
 		serviceCmdArgs := []string{
 			options.ResourceName,
 			"--image-repository=" + MULTI_LLM_NIM_REPO,
 			"--tag=" + MULTI_LLM_TAG,
+			"--env=" + NIM_MODEL_NAME_ENV_VAR + "," + endPoint,
 			"--pull-secrets=ngc-secret",
 			"--auth-secret=ngc-api-secret",
 			"--nimcache-storage-name=" + options.ResourceName + "-cache",
