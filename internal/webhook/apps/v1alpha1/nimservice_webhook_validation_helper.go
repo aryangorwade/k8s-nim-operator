@@ -345,7 +345,7 @@ func validateDRAResourceQuantitySelectorValue(value *apiresource.Quantity, fldPa
 
 func validateAuthSecret(authSecret *string, fldPath *field.Path) field.ErrorList {
 	errList := field.ErrorList{}
-	if *authSecret == "" {
+	if authSecret == nil || *authSecret == "" {
 		errList = append(errList, field.Required(fldPath, "is required"))
 	}
 	return errList
