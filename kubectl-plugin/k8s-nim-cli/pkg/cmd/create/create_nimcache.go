@@ -36,8 +36,9 @@ type NIMCacheOptions struct {
 	PVCSize             string
 	PVCVolumeAccessMode string
 	// All PVC flags are reused.
-	PullSecret string
-	AuthSecret string
+	PullSecret 			string
+	AuthSecret			string
+	AltSecret 			string
 
 	SourceConfiguration string
 	ResourcesCPU        string
@@ -118,7 +119,7 @@ Must specify --nim-source and storage: reference an existing/create new PVC.`,
 	cmd.Example = strings.Join([]string{
 		"  kl nim create nimcache my-nimcache --nim-source=ngc --model-puller=nvcr.io/nim/meta/llama-3.1-8b-instruct:1.3.3 --pull-secret=ngc-secret --auth-secret=ngc-api-secret --engine=tensorrt_llm --tensorParallelism=1 --pvc-storage-name=nim-pvc",
 		"",
-		"  kl nim create nimcache my-nimcache  --alt-endpoint=<hf-endpoint> --alt-namespace=main --auth-secret=<hf-secret> model-puller=<model-puller> --pull-secret=<hf-pullsecret> --pvc-create=true --pvc-size=20Gi --pvc-volume-access-mode=ReadWriteMany --pvc-storage-class=<storage-class-name>",
+		"  kl nim create nimcache my-nimcache  --alt-endpoint=<hf-endpoint> --alt-namespace=main --alt-secret=<hf-secret> model-puller=<model-puller> --pull-secret=<hf-pullsecret> --pvc-create=true --pvc-size=20Gi --pvc-volume-access-mode=ReadWriteMany --pvc-storage-class=<storage-class-name>",
 	  }, "\n")
 
 	// The first argument will be name. Other arguments will be specified as flags.
@@ -148,7 +149,8 @@ Must specify --nim-source and storage: reference an existing/create new PVC.`,
 	cmd.Flags().StringVar(&options.PVCVolumeAccessMode, "pvc-volume-access-mode", util.PVCVolumeAccessMode, "Volume access mode for PVC creation. Must provide if creating new PVC.")
 	cmd.Flags().StringVar(&options.PVCSize, "pvc-size", util.PVCSize, "Size for PVC creation. Must provide if creating new PVC.")
 	cmd.Flags().StringVar(&options.PVCStorageClass, "pvc-storage-class", util.PVCStorageClass, "Storage class for PVC creation. Optional.")
-	cmd.Flags().StringVar(&options.AuthSecret, "auth-secret", util.AuthSecret, "Auth secret to use for accessing NGC/HF/NemoDataStore.")
+	cmd.Flags().StringVar(&options.AuthSecret, "auth-secret", util.AuthSecret, "Auth secret to use for accessing NGC.")
+	cmd.Flags().StringVar(&options.AltSecret, "alt-secret", util.AuthSecret, "Auth secret to use for accessing HF/NemoDataStore.")
 
 	return cmd
 }
@@ -248,12 +250,14 @@ func FillOutNIMCacheSpec(options *NIMCacheOptions) (*appsv1alpha1.NIMCache, erro
 		nimcache.Spec.Source.HF = &appsv1alpha1.HuggingFaceHubSource{}
 		nimcache.Spec.Source.HF.Endpoint = options.AltEndpoint
 		nimcache.Spec.Source.HF.Namespace = options.AltNamespace
+		nimcache.Spec.Source.HF.AuthSecret = options.AltSecret
 		fillOutDSHF(&nimcache, options)
 	default:
 		//NeMo DataStore
 		nimcache.Spec.Source.DataStore = &appsv1alpha1.NemoDataStoreSource{}
 		nimcache.Spec.Source.DataStore.Endpoint = options.AltEndpoint
 		nimcache.Spec.Source.DataStore.Namespace = options.AltNamespace
+		nimcache.Spec.Source.DataStore.AuthSecret = options.AltSecret
 		fillOutDSHF(&nimcache, options)
 	}
 

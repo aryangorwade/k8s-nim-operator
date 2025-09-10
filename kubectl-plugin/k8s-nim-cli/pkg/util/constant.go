@@ -11,6 +11,7 @@ const (
 	AuthSecret          = "ngc-api-secret"
 	PVCCreate           = false
 	PVCVolumeAccessMode = "ReadWriteMany"
+	AltSecret			= "hf-api-secret"
 )
 var PullSecrets []string = []string{"ngc-secret"}
 

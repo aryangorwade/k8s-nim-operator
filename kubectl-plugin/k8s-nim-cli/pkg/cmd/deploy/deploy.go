@@ -192,6 +192,7 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 			"--env=" + NIM_MODEL_NAME_ENV_VAR + "," + endPoint,
 			"--pull-secret=ngc-secret",
 			"--auth-secret=ngc-api-secret",
+			"--alt-secret=hf-api-secret",
 		}
 		serviceCmdArgs = append(serviceCmdArgs, pvcFlags...)
 		serviceCmd.SetArgs(serviceCmdArgs)
@@ -211,14 +212,11 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 			cacheCmdArgs = append(cacheCmdArgs, "--alt-endpoint="+endPoint)
 			cacheCmdArgs = append(cacheCmdArgs, "--alt-namespace="+altNamespace)
 			cacheCmdArgs = append(cacheCmdArgs, "--model-name="+hfModelName)
-			cacheCmdArgs = append(cacheCmdArgs, "--auth-secret=hf-api-secret")
+			cacheCmdArgs = append(cacheCmdArgs, "--alt-secret=hf-api-secret")
 		}
 		cacheCmdArgs = append(cacheCmdArgs, pvcFlags...)
 		cacheCmd.SetArgs(cacheCmdArgs)
 		
-		// Get NIM_MODEL_NAME.
-		// nvcr.io/nim/meta/llama-3.2-1b-instruct:1.12.0 => nvidia/nemo/llama-3_2-1b-instruct
-
 		// Assemble NIMService flags.
 		serviceCmdArgs := []string{
 			options.ResourceName,
