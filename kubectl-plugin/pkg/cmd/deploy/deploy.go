@@ -31,7 +31,8 @@ func NewDeployCommand(cmdFactory cmdutil.Factory, streams genericclioptions.IOSt
 	cmd := &cobra.Command{
 		Use:          "deploy NAME",
 		Short:        "Interactively deploy a NIMService custom resource.",
-		Long:         `Given an image name and some more information, deploys a NIMService running a universal nim for the user (with/without NIMCache).`,
+		Long:         `Given an image name and some more information, deploys a NIMService running a universal nim for the user (with/without NIMCache).
+Note: ngc-secret, ngc-api-secret, and hf-api-secret (depending on model source) must exist and be defined pull secrets.`,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			switch len(args) {
@@ -99,7 +100,7 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 
 	// No: ask for NIM_MODEL_NAME. proceed to PVC creation steps (skip to step 3).
 	if !cacheModel {
-		fmt.Fprint(options.IoStreams.Out, "Enter the Model URL (eg: ngc://nvidia/nemo/<model_name>:2.0): ")
+		fmt.Fprint(options.IoStreams.Out, "Enter the Model URL (eg: ngc://nvidia/nemo/<model_name>:2.0; hf://meta-llama/Llama-3.2-1B-Instruct): ")
 		response, err := reader.ReadString('\n')
 		if err != nil {
 			return fmt.Errorf("failed to read model name: %w", err), nil
@@ -108,7 +109,6 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 	} else {
 		// Yes, continue below.
 		// 2) Ask for image source.
-
 		for {
 			fmt.Fprint(options.IoStreams.Out, "Enter the image source for caching (ngc, huggingface, nemoDataStore): ")
 			response, err := reader.ReadString('\n')
@@ -121,11 +121,9 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 				break
 			}
 		}
-
 		switch imgSource {
 		case "ngc":
-			// If ngc, ask for modelPuller. warn about expected ngc-secret.
-			fmt.Fprint(options.IoStreams.Out, "Note: ngc-secret must exist and be a defined pull secret.")
+			// If ngc, ask for modelPuller.
 			fmt.Fprint(options.IoStreams.Out, "Enter the Model URL (eg: ngc://nvidia/nemo/<model_name>:2.0): ")
 			response, err := reader.ReadString('\n')
 			if err != nil {
@@ -134,17 +132,15 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 			endPoint = strings.TrimSpace(response)
 	
 		default:
-			// Ask for endpoint & modelName. Warn about expected hf-api-secret.
-			fmt.Fprint(options.IoStreams.Out, "Note: ngc-secret must exist and be a defined pull secret")
-			fmt.Fprint(options.IoStreams.Out, "      hf-api-secret must exist and contain the 'HF_TOKEN' token")
-			fmt.Fprint(options.IoStreams.Out, "Enter HF endpoint: ")
+			// Ask for endpoint & modelName.
+			fmt.Fprint(options.IoStreams.Out, "Enter endpoint: ")
 			response, err := reader.ReadString('\n')
 			if err != nil {
 				return fmt.Errorf("failed to read endpoint: %w", err), nil
 			}
 			endPoint = strings.TrimSpace(response)
 
-			fmt.Fprint(options.IoStreams.Out, "Enter HF namespace: ")
+			fmt.Fprint(options.IoStreams.Out, "Enter namespace: ")
 			response, err = reader.ReadString('\n')
 			if err != nil {
 				return fmt.Errorf("failed to read namespace: %w", err), nil
@@ -189,11 +185,9 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 			options.ResourceName,
 			"--image-repository=" + MULTI_LLM_NIM_REPO,
 			"--tag=" + MULTI_LLM_TAG,
-			"--env=" + NIM_MODEL_NAME_ENV_VAR + "," + endPoint,
-			"--pull-secret=ngc-secret",
-			"--auth-secret=ngc-api-secret",
-			"--alt-secret=hf-api-secret",
+			"--env=" + NIM_MODEL_NAME_ENV_VAR + "," + endPoint + ",HF_TOKEN," + "hf-api-secret",
 		}
+
 		serviceCmdArgs = append(serviceCmdArgs, pvcFlags...)
 		serviceCmd.SetArgs(serviceCmdArgs)
 		return serviceCmd.ExecuteContext(ctx), nil
@@ -222,9 +216,6 @@ func Run(ctx context.Context, options *util.FetchResourceOptions, k8sClient clie
 			options.ResourceName,
 			"--image-repository=" + MULTI_LLM_NIM_REPO,
 			"--tag=" + MULTI_LLM_TAG,
-			"--env=" + NIM_MODEL_NAME_ENV_VAR + "," + endPoint,
-			"--pull-secrets=ngc-secret",
-			"--auth-secret=ngc-api-secret",
 			"--nimcache-storage-name=" + options.ResourceName + "-cache",
 		}
 		serviceCmd.SetArgs(serviceCmdArgs)
@@ -238,11 +229,11 @@ Control Flow: first make nimservice, the nimcache.
 
 Questions:
 1) Do you want to cache the model?
-   - no: ask for NIM_MODEL_NAME. proceed to PVC creation steps (skip to step 3)
+   - no: ask for NIM_MODEL_NAME. then proceed to PVC creation steps (skip to step 3)
    - yes: continue below:
 2) Image source? NGC, or HF/NeMo DataStore
-   - if ngc, ask for modelPuller. warn about expected ngc-secret
-   - if hf/nemodatastore, ask for endpoint & hfModelName. warn about expected hf-api-secret
+   - if ngc, ask for modelPuller
+   - if hf/nemodatastore, ask for endpoint & hfModelName
 3) Handle PVC creation
 	- create new pvc of 20gb and use.
 4) Assemble everything.

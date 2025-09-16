@@ -3,6 +3,7 @@ package create
 import (
 	"fmt"
 	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/spf13/cobra"
@@ -36,9 +37,9 @@ type NIMCacheOptions struct {
 	PVCSize             string
 	PVCVolumeAccessMode string
 	// All PVC flags are reused.
-	PullSecret 			string
-	AuthSecret			string
-	AltSecret 			string
+	PullSecret string
+	AuthSecret string
+	AltSecret  string
 
 	SourceConfiguration string
 	ResourcesCPU        string
@@ -87,7 +88,7 @@ func NewCreateNIMCacheCommand(cmdFactory cmdutil.Factory, streams genericcliopti
 	options := NewNIMCacheOptions(cmdFactory, streams)
 
 	cmd := &cobra.Command{
-		Use: "nimcache [NAME]",
+		Use:   "nimcache [NAME]",
 		Short: "Create new NIMCache with specified information",
 		Long: `Create new NIMCache with specified parameters.
 Must specify --nim-source and storage: reference an existing/create new PVC.`,
@@ -120,7 +121,7 @@ Must specify --nim-source and storage: reference an existing/create new PVC.`,
 		"  kl nim create nimcache my-nimcache --nim-source=ngc --model-puller=nvcr.io/nim/meta/llama-3.1-8b-instruct:1.3.3 --pull-secret=ngc-secret --auth-secret=ngc-api-secret --engine=tensorrt_llm --tensorParallelism=1 --pvc-storage-name=nim-pvc",
 		"",
 		"  kl nim create nimcache my-nimcache  --alt-endpoint=<hf-endpoint> --alt-namespace=main --alt-secret=<hf-secret> model-puller=<model-puller> --pull-secret=<hf-pullsecret> --pvc-create=true --pvc-size=20Gi --pvc-volume-access-mode=ReadWriteMany --pvc-storage-class=<storage-class-name>",
-	  }, "\n")
+	}, "\n")
 
 	// The first argument will be name. Other arguments will be specified as flags.
 	cmd.Flags().StringVar(&options.SourceConfiguration, "nim-source", util.SourceConfiguration, "The NIM model source to cache. Must be one of 'ngc', 'huggingface', 'nemodatastore'.")
@@ -138,7 +139,7 @@ Must specify --nim-source and storage: reference an existing/create new PVC.`,
 	cmd.Flags().StringSliceVar(&options.Profiles, "profiles", util.Profiles, "Comma-separated list of the specific model profiles to Cache. When provided, rest of model parameters for profile selection (precision, engine, etc.) are ignored.")
 	cmd.Flags().StringSliceVar(&options.GPUs, "gpus", util.GPUs, "Comma-separated list of GPU product strings for matching GPUs to cache optimized models. Eg: h100, a100, l40s.")
 	cmd.Flags().StringVar(&options.AltEndpoint, "alt-endpoint", util.AltEndpoint, "Endpoint for HuggingFace/NeMo DataStore. If source is NeMo DataStore, this is the HuggingFace endpoint from NeMo DataStore.")
-	cmd.Flags().StringVar(&options.Namespace, "alt-namespace", util.AltNamespace, "Namespace within the HuggingFace Hub/NeMo DataStore.")
+	cmd.Flags().StringVar(&options.AltNamespace, "alt-namespace", util.AltNamespace, "Namespace within the HuggingFace Hub/NeMo DataStore.")
 	cmd.Flags().StringVar(&options.ModelName, "model-name", util.ModelName, "Name of the model when nim source is HF/Nemo.")
 	cmd.Flags().StringVar(&options.DatasetName, "dataset-name", util.DatasetName, "Name of the dataset when nim source is HF/Nemo.")
 	cmd.Flags().StringVar(&options.Revision, "revision", util.Revision, "Revision of object to be cached when nim source is HF/Nemo. Either a commit hash, branch name or tag.")
@@ -150,7 +151,7 @@ Must specify --nim-source and storage: reference an existing/create new PVC.`,
 	cmd.Flags().StringVar(&options.PVCSize, "pvc-size", util.PVCSize, "Size for PVC creation. Must provide if creating new PVC.")
 	cmd.Flags().StringVar(&options.PVCStorageClass, "pvc-storage-class", util.PVCStorageClass, "Storage class for PVC creation. Optional.")
 	cmd.Flags().StringVar(&options.AuthSecret, "auth-secret", util.AuthSecret, "Auth secret to use for accessing NGC.")
-	cmd.Flags().StringVar(&options.AltSecret, "alt-secret", util.AuthSecret, "Auth secret to use for accessing HF/NemoDataStore.")
+	cmd.Flags().StringVar(&options.AltSecret, "alt-secret", util.AltSecret, "Auth secret to use for accessing HF/NemoDataStore.")
 
 	return cmd
 }
@@ -251,6 +252,9 @@ func FillOutNIMCacheSpec(options *NIMCacheOptions) (*appsv1alpha1.NIMCache, erro
 		nimcache.Spec.Source.HF.Endpoint = options.AltEndpoint
 		nimcache.Spec.Source.HF.Namespace = options.AltNamespace
 		nimcache.Spec.Source.HF.AuthSecret = options.AltSecret
+		nimcache.Spec.Source.HF.ModelPuller = options.ModelPuller
+		nimcache.Spec.Source.HF.PullSecret = options.PullSecret
+
 		fillOutDSHF(&nimcache, options)
 	default:
 		//NeMo DataStore
@@ -258,6 +262,8 @@ func FillOutNIMCacheSpec(options *NIMCacheOptions) (*appsv1alpha1.NIMCache, erro
 		nimcache.Spec.Source.DataStore.Endpoint = options.AltEndpoint
 		nimcache.Spec.Source.DataStore.Namespace = options.AltNamespace
 		nimcache.Spec.Source.DataStore.AuthSecret = options.AltSecret
+		nimcache.Spec.Source.DataStore.ModelPuller = options.ModelPuller
+		nimcache.Spec.Source.DataStore.PullSecret = options.PullSecret
 		fillOutDSHF(&nimcache, options)
 	}
 
@@ -310,9 +316,6 @@ func fillOutDSHF(nimcache *appsv1alpha1.NIMCache, options *NIMCacheOptions) {
 		if options.DatasetName != "" {
 			nimcache.Spec.Source.HF.DatasetName = ptr.To(options.DatasetName)
 		}
-		nimcache.Spec.Source.HF.AuthSecret = options.AuthSecret
-		nimcache.Spec.Source.HF.ModelPuller = options.ModelPuller
-		nimcache.Spec.Source.HF.PullSecret = options.PullSecret
 		if options.Revision != "" {
 			nimcache.Spec.Source.HF.Revision = ptr.To(options.Revision)
 		}
@@ -324,9 +327,6 @@ func fillOutDSHF(nimcache *appsv1alpha1.NIMCache, options *NIMCacheOptions) {
 		if options.DatasetName != "" {
 			nimcache.Spec.Source.DataStore.DatasetName = ptr.To(options.DatasetName)
 		}
-		nimcache.Spec.Source.DataStore.AuthSecret = options.AuthSecret
-		nimcache.Spec.Source.DataStore.ModelPuller = options.ModelPuller
-		nimcache.Spec.Source.DataStore.PullSecret = options.PullSecret
 		if options.Revision != "" {
 			nimcache.Spec.Source.DataStore.Revision = ptr.To(options.Revision)
 		}

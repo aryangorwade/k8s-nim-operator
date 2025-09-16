@@ -248,13 +248,35 @@ func FillOutNIMServiceSpec(options *NIMServiceOptions) (*appsv1alpha1.NIMService
 		return nil, fmt.Errorf("invalid inference-platform: %q, must be one of 'kserve,' 'standalone'", options.InferencePlatform)
 	}
 
-	// Expect two values: env name and env value
+	// Expect max of two pairs of env name, value.
 	if len(options.Env) == 2 {
 		nimservice.Spec.Env = []corev1.EnvVar{{
 			Name:  options.Env[0],
 			Value: options.Env[1],
 		}}
+	} else if len(options.Env) == 4 {		  
+		nimservice.Spec.Env = []corev1.EnvVar{
+			{
+			  Name:  options.Env[0],         // e.g. "NIM_MODEL_NAME"
+			  Value: options.Env[1],         // e.g. "hf://..."
+			},
+			{
+			  Name: options.Env[2],          // e.g. "HF_TOKEN"
+			  ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+				  LocalObjectReference: corev1.LocalObjectReference{
+					Name: options.Env[3],    // e.g. "hf-api-secret"
+				  },
+				  Key: "HF_TOKEN",
+				  Optional: ptr.To(true),
+				},
+			  },
+			},
+		}
+	} else if len(options.Env) != 0 {
+		return &nimservice, fmt.Errorf("Only two env allowed, NIM_MODEL_NAME_ENV_VAR and HF_TOKEN.")
 	}
+
 
 	return &nimservice, nil
 }

@@ -81,5 +81,5 @@ func getEndpoint(nimService *appsv1alpha1.NIMService) string {
 	if nimService.Status.Model != nil {
 		return nimService.Status.Model.ExternalEndpoint
 	}
-	return "error"
+	return ""
 }
