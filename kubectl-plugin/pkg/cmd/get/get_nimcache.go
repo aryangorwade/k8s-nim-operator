@@ -28,7 +28,6 @@ func NewGetNIMCacheCommand(cmdFactory cmdutil.Factory, streams genericclioptions
 		Short:        "Get NIMCache information.",
 		Long: 		  "Get a summary general NIMCache information for all NIMServices in a namespace.",
 		SilenceUsage: true,
-		// ValidArgsFunction: completion.RayClusterCompletionFunc(cmdFactory),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := options.CompleteNamespace(args, cmd); err != nil {

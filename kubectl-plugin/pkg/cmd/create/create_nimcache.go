@@ -93,7 +93,6 @@ func NewCreateNIMCacheCommand(cmdFactory cmdutil.Factory, streams genericcliopti
 		Long: `Create new NIMCache with specified parameters.
 Must specify --nim-source and storage: reference an existing/create new PVC.`,
 		SilenceUsage: true,
-		// ValidArgsFunction: completion.RayClusterCompletionFunc(cmdFactory),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {

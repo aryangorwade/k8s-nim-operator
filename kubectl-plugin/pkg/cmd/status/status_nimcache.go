@@ -27,7 +27,6 @@ func NewStatusNIMCacheCommand(cmdFactory cmdutil.Factory, streams genericcliopti
 		Short:        "Get NIMCache status.",
 		Long: 		  "Get detailed status information about one NIMCache, or a summary of all NIMCaches in a namespace.",
 		SilenceUsage: true,
-		// ValidArgsFunction: completion.RayClusterCompletionFunc(cmdFactory),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := options.CompleteNamespace(args, cmd); err != nil {

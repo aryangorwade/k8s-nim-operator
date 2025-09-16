@@ -85,7 +85,6 @@ Minimum required flags are --image-repository, --tag, and storage: reference eit
 	- If using existing PVC, minimum required flags are pvc-storage-name. 
 	- If creating new PVC, minimum required flags are pvc-create, pvc-size, pvc-volume-access-mode, pvc-storage-class.`,
 		SilenceUsage: true,
-		// ValidArgsFunction: completion.RayClusterCompletionFunc(cmdFactory),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -175,11 +174,10 @@ func FillOutNIMServiceSpec(options *NIMServiceOptions) (*appsv1alpha1.NIMService
 	nimservice.Spec.Image.Repository = options.ImageRepository
 	nimservice.Spec.Image.Tag = options.Tag
 
-	// Complete Storage. Webhooks will do validation.
+	// Complete Storage.
 	if options.HostPath != "" {
 		nimservice.Spec.Storage.HostPath = ptr.To(options.HostPath)
-	}
-	if options.NIMCacheStorageName != "" {
+	} else if options.NIMCacheStorageName != "" {
 		nimservice.Spec.Storage.NIMCache.Name = options.NIMCacheStorageName
 		if options.NIMCacheStorageProfile != "" {
 			nimservice.Spec.Storage.NIMCache.Profile = options.NIMCacheStorageProfile

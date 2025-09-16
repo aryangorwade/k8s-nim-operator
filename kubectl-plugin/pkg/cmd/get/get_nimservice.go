@@ -27,7 +27,6 @@ func NewGetNIMServiceCommand(cmdFactory cmdutil.Factory, streams genericclioptio
 		Short:        "Get NIMService information.",
 		Long:         "Get a summary of general NIMService information for all NIMServices in a namespace.",
 		SilenceUsage: true,
-		// ValidArgsFunction: completion.RayClusterCompletionFunc(cmdFactory),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := options.CompleteNamespace(args, cmd); err != nil {

@@ -2,6 +2,7 @@ package get
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -80,12 +81,14 @@ func Test_printNIMServices(t *testing.T) {
 	ns1.Status.State = "Creating"
 	ns1.ObjectMeta.CreationTimestamp = metav1.NewTime(time.Now().Add(-1 * time.Hour))
 
-	// Item 2
+	// Item 2 - with an endpoint
 	min := int32(1)
 	ns2 := withReplicas(withExposeService(withImage(newBaseNS("svc2", "ns2"), "repo2", "v2"), "", 9090), 3)
 	ns2 = withScale(ns2, true, &min, 5)
 	ns2 = withStorageNIMCache(ns2, "nimc", "fp8")
 	ns2.Status.State = "Ready"
+	ns2.Status.Model = &appsv1alpha1.ModelStatus{ExternalEndpoint: "http://example.com/api"}
+	ns2.ObjectMeta.CreationTimestamp = metav1.NewTime(time.Now().Add(-2 * time.Hour))
 
 	list := &appsv1alpha1.NIMServiceList{Items: []appsv1alpha1.NIMService{ns1, ns2}}
 
@@ -96,22 +99,146 @@ func Test_printNIMServices(t *testing.T) {
 	out := buf.String()
 
 	// Headers (printer uppercases them)
-	for _, h := range []string{"NAME", "NAMESPACE", "IMAGE", "EXPOSE SERVICE", "REPLICAS", "SCALE", "STORAGE", "RESOURCES", "STATE", "AGE"} {
+	for _, h := range []string{"NAME", "STATUS", "AGE", "ENDPOINT"} {
 		if !strings.Contains(out, h) {
 			t.Fatalf("output missing header %q:\n%s", h, out)
 		}
 	}
 
 	// Row assertions
-	for _, s := range []string{"svc1", "ns1", "repo1 v1", "Name: api, Port: 8080", "2", "disabled", "PVC: pvc1, 10Gi", "Creating"} {
-		if !strings.Contains(out, s) {
-			t.Fatalf("output missing cell %q:\n%s", s, out)
+	// Check first service (no endpoint)
+	if !strings.Contains(out, "svc1") {
+		t.Fatalf("output missing svc1")
+	}
+	if !strings.Contains(out, "Creating") {
+		t.Fatalf("output missing Creating status")
+	}
+
+	// Check second service (with endpoint)
+	if !strings.Contains(out, "svc2") {
+		t.Fatalf("output missing svc2")
+	}
+	if !strings.Contains(out, "Ready") {
+		t.Fatalf("output missing Ready status")
+	}
+	if !strings.Contains(out, "http://example.com/api") {
+		t.Fatalf("output missing endpoint")
+	}
+}
+
+func Test_getEndpoint(t *testing.T) {
+	tests := []struct {
+		name string
+		ns   appsv1alpha1.NIMService
+		want string
+	}{
+		{
+			"with endpoint",
+			appsv1alpha1.NIMService{
+				Status: appsv1alpha1.NIMServiceStatus{
+					Model: &appsv1alpha1.ModelStatus{
+						ExternalEndpoint: "http://example.com/api",
+					},
+				},
+			},
+			"http://example.com/api",
+		},
+		{
+			"no model status",
+			appsv1alpha1.NIMService{},
+			"",
+		},
+		{
+			"model status but no endpoint",
+			appsv1alpha1.NIMService{
+				Status: appsv1alpha1.NIMServiceStatus{
+					Model: &appsv1alpha1.ModelStatus{},
+				},
+			},
+			"",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getEndpoint(&tt.ns)
+			if got != tt.want {
+				t.Errorf("getEndpoint() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_printNIMServices_EmptyList(t *testing.T) {
+	list := &appsv1alpha1.NIMServiceList{Items: []appsv1alpha1.NIMService{}}
+
+	var buf bytes.Buffer
+	if err := printNIMServices(list, &buf); err != nil {
+		t.Fatalf("printNIMServices error: %v", err)
+	}
+	out := buf.String()
+
+	// When there are no items, the table printer doesn't output anything
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("expected empty output for empty list, got:\n%s", out)
+	}
+}
+
+func Test_printNIMServices_DifferentStates(t *testing.T) {
+	// Test various states
+	states := []string{"Creating", "Ready", "Failed", "Updating", "Terminating"}
+	var services []appsv1alpha1.NIMService
+
+	for i, state := range states {
+		ns := withImage(newBaseNS(fmt.Sprintf("svc-%s", strings.ToLower(state)), "ns"), "repo", "v1")
+		ns.Status.State = state
+		ns.ObjectMeta.CreationTimestamp = metav1.NewTime(time.Now().Add(time.Duration(-i) * time.Hour))
+		services = append(services, ns)
+	}
+
+	list := &appsv1alpha1.NIMServiceList{Items: services}
+
+	var buf bytes.Buffer
+	if err := printNIMServices(list, &buf); err != nil {
+		t.Fatalf("printNIMServices error: %v", err)
+	}
+	out := buf.String()
+
+	// Check all states are displayed
+	for _, state := range states {
+		if !strings.Contains(out, state) {
+			t.Fatalf("output missing state %q:\n%s", state, out)
 		}
 	}
-	for _, s := range []string{"svc2", "ns2", "repo2 v2", "Port: 9090", "3", "min: 1, max: 5", "NIMCache: name: nimc, profile: fp8", "Ready"} {
-		if !strings.Contains(out, s) {
-			t.Fatalf("output missing cell %q:\n%s", s, out)
-		}
+}
+
+func Test_printNIMServices_WithDifferentStorageTypes(t *testing.T) {
+	// Service with HostPath
+	ns1 := withStorageHostPath(withImage(newBaseNS("svc-hostpath", "ns"), "repo", "v1"), "/mnt/models")
+	ns1.Status.State = "Ready"
+	ns1.ObjectMeta.CreationTimestamp = metav1.NewTime(time.Now().Add(-1 * time.Hour))
+
+	// Service with NIMCache and profile
+	ns2 := withStorageNIMCache(withImage(newBaseNS("svc-nimcache", "ns"), "repo", "v2"), "cache1", "optimized")
+	ns2.Status.State = "Ready"
+	ns2.ObjectMeta.CreationTimestamp = metav1.NewTime(time.Now().Add(-2 * time.Hour))
+
+	// Service with PVC
+	ns3 := withStoragePVC(withImage(newBaseNS("svc-pvc", "ns"), "repo", "v3"), "my-pvc", "100Gi")
+	ns3.Status.State = "Creating"
+	ns3.ObjectMeta.CreationTimestamp = metav1.NewTime(time.Now().Add(-30 * time.Minute))
+
+	list := &appsv1alpha1.NIMServiceList{Items: []appsv1alpha1.NIMService{ns1, ns2, ns3}}
+
+	var buf bytes.Buffer
+	if err := printNIMServices(list, &buf); err != nil {
+		t.Fatalf("printNIMServices error: %v", err)
+	}
+	out := buf.String()
+
+	// Verify all services are shown
+	if !strings.Contains(out, "svc-hostpath") || !strings.Contains(out, "svc-nimcache") || !strings.Contains(out, "svc-pvc") {
+		t.Fatalf("output missing one or more services:\n%s", out)
 	}
 }
 
@@ -188,6 +315,18 @@ func Test_getSource(t *testing.T) {
 		})
 	}
 }
+
+func Test_getSource_HuggingFace(t *testing.T) {
+	nc := newBaseNC("hf-cache", "ns")
+	nc.Spec.Source.HF = &appsv1alpha1.HuggingFaceHubSource{}
+	nc.Spec.Source.HF.ModelPuller = "hf-puller:latest"
+
+	got := getSource(&nc)
+	if got != "HuggingFace Hub" {
+		t.Fatalf("getSource() for HF = %q, want %q", got, "HuggingFace Hub")
+	}
+}
+
 func Test_getPVCDetails(t *testing.T) {
 	nc1 := withPVC(newBaseNC("a", "ns"), "pvc-a", "10Gi")
 	nc2 := withPVC(newBaseNC("b", "ns"), "", "20Gi")
@@ -222,23 +361,184 @@ func Test_printNIMCaches(t *testing.T) {
 	}
 	out := buf.String()
 
-	for _, h := range []string{
-		"NAME", "NAMESPACE", "SOURCE", "MODEL/MODELPULLER", "CPU", "MEMORY", "PVC VOLUME", "STATE", "AGE",
-	} {
+	// Check headers
+	for _, h := range []string{"NAME", "SOURCE", "STATUS", "PVC", "AGE"} {
 		if !strings.Contains(out, h) {
 			t.Fatalf("output missing header %q:\n%s", h, out)
 		}
 	}
 
-	for _, s := range []string{"nc-ngc", "ns1", "NGC", "img:tag", "2", "4Gi", "pvc1, 50Gi", "Creating"} {
-		if !strings.Contains(out, s) {
-			t.Fatalf("output missing NGC cell %q:\n%s", s, out)
-		}
+	// Check first cache (NGC)
+	if !strings.Contains(out, "nc-ngc") {
+		t.Fatalf("output missing nc-ngc name")
+	}
+	if !strings.Contains(out, "NGC") {
+		t.Fatalf("output missing NGC source")
+	}
+	if !strings.Contains(out, "Creating") {
+		t.Fatalf("output missing Creating status")
+	}
+	if !strings.Contains(out, "pvc1, 50Gi") {
+		t.Fatalf("output missing PVC details")
 	}
 
-	for _, s := range []string{"nc-ds", "ns2", "NVIDIA NeMo DataStore", "mymodel", "8", "32Gi", "200Gi", "Ready"} {
-		if !strings.Contains(out, s) {
-			t.Fatalf("output missing DS cell %q:\n%s", s, out)
+	// Check second cache (DataStore)
+	if !strings.Contains(out, "nc-ds") {
+		t.Fatalf("output missing nc-ds name")
+	}
+	if !strings.Contains(out, "NVIDIA NeMo DataStore") {
+		t.Fatalf("output missing DataStore source")
+	}
+	if !strings.Contains(out, "Ready") {
+		t.Fatalf("output missing Ready status")
+	}
+	if !strings.Contains(out, "200Gi") {
+		t.Fatalf("output missing PVC size for second cache")
+	}
+	if !strings.Contains(out, "<unknown>") {
+		t.Fatalf("output missing <unknown> age for second cache (zero timestamp)")
+	}
+}
+
+func Test_printNIMCaches_EmptyList(t *testing.T) {
+	list := &appsv1alpha1.NIMCacheList{Items: []appsv1alpha1.NIMCache{}}
+
+	var buf bytes.Buffer
+	if err := printNIMCaches(list, &buf); err != nil {
+		t.Fatalf("printNIMCaches error: %v", err)
+	}
+	out := buf.String()
+
+	// When there are no items, the table printer doesn't output anything
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("expected empty output for empty list, got:\n%s", out)
+	}
+}
+
+func Test_printNIMCaches_AllSourceTypes(t *testing.T) {
+	// NGC source
+	nc1 := withState(withPVC(ncWithNGC("nc-ngc", "ns", "nvcr.io/nim/puller:latest"), "ngc-pvc", "50Gi"), "Ready")
+	nc1 = withCreationTime(nc1, time.Now().Add(-1*time.Hour))
+
+	// HuggingFace source
+	nc2 := newBaseNC("nc-hf", "ns")
+	nc2.Spec.Source.HF = &appsv1alpha1.HuggingFaceHubSource{
+		Endpoint:  "https://huggingface.co",
+		Namespace: "meta-llama",
+	}
+	nc2.Spec.Source.HF.ModelPuller = "hf-puller:latest"
+	nc2 = withState(withPVC(nc2, "hf-pvc", "100Gi"), "Creating")
+	nc2 = withCreationTime(nc2, time.Now().Add(-30*time.Minute))
+
+	// DataStore source
+	nc3 := withState(withPVC(ncWithDataStoreEndpoint("nc-ds", "ns", "https://nemo.example.com"), "ds-pvc", "200Gi"), "Failed")
+	nc3 = withCreationTime(nc3, time.Now().Add(-3*time.Hour))
+
+	list := &appsv1alpha1.NIMCacheList{Items: []appsv1alpha1.NIMCache{nc1, nc2, nc3}}
+
+	var buf bytes.Buffer
+	if err := printNIMCaches(list, &buf); err != nil {
+		t.Fatalf("printNIMCaches error: %v", err)
+	}
+	out := buf.String()
+
+	// Check all sources are displayed
+	if !strings.Contains(out, "NGC") {
+		t.Fatalf("output missing NGC source")
+	}
+	if !strings.Contains(out, "HuggingFace Hub") {
+		t.Fatalf("output missing HuggingFace Hub source")
+	}
+	if !strings.Contains(out, "NVIDIA NeMo DataStore") {
+		t.Fatalf("output missing DataStore source")
+	}
+
+	// Check all states
+	if !strings.Contains(out, "Ready") || !strings.Contains(out, "Creating") || !strings.Contains(out, "Failed") {
+		t.Fatalf("output missing one or more states")
+	}
+}
+
+func Test_printNIMCaches_DifferentPVCConfigurations(t *testing.T) {
+	// Cache with PVC name and size
+	nc1 := withPVC(newBaseNC("nc-full-pvc", "ns"), "my-pvc-1", "50Gi")
+	nc1 = withState(nc1, "Ready")
+	nc1 = withCreationTime(nc1, time.Now().Add(-1*time.Hour))
+
+	// Cache with only size (no name)
+	nc2 := withPVC(newBaseNC("nc-size-only", "ns"), "", "100Gi")
+	nc2 = withState(nc2, "Creating")
+	nc2 = withCreationTime(nc2, time.Now().Add(-2*time.Hour))
+
+	// Cache with empty PVC details
+	nc3 := newBaseNC("nc-no-pvc", "ns")
+	nc3 = withState(nc3, "Ready")
+	nc3 = withCreationTime(nc3, time.Now().Add(-3*time.Hour))
+
+	list := &appsv1alpha1.NIMCacheList{Items: []appsv1alpha1.NIMCache{nc1, nc2, nc3}}
+
+	var buf bytes.Buffer
+	if err := printNIMCaches(list, &buf); err != nil {
+		t.Fatalf("printNIMCaches error: %v", err)
+	}
+	out := buf.String()
+
+	// Check PVC details formatting
+	if !strings.Contains(out, "my-pvc-1, 50Gi") {
+		t.Fatalf("output missing correct PVC details for full PVC")
+	}
+	if !strings.Contains(out, "100Gi") {
+		t.Fatalf("output missing PVC size for size-only cache")
+	}
+
+	lines := strings.Split(out, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "nc-no-pvc") {
+			// Should have empty PVC column
+			fields := strings.Fields(line)
+			if len(fields) < 4 {
+				t.Fatalf("expected at least 4 fields in output line")
+			}
+			// The PVC field should be empty or just whitespace between STATUS and AGE
+			break
 		}
+	}
+}
+
+func Test_getPVCDetails_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		nimCache appsv1alpha1.NIMCache
+		want     string
+	}{
+		{
+			name:     "both name and size",
+			nimCache: withPVC(newBaseNC("nc", "ns"), "test-pvc", "50Gi"),
+			want:     "test-pvc, 50Gi",
+		},
+		{
+			name:     "only size",
+			nimCache: withPVC(newBaseNC("nc", "ns"), "", "100Gi"),
+			want:     "100Gi",
+		},
+		{
+			name:     "only name",
+			nimCache: withPVC(newBaseNC("nc", "ns"), "lonely-pvc", ""),
+			want:     "lonely-pvc, ",
+		},
+		{
+			name:     "neither name nor size",
+			nimCache: newBaseNC("nc", "ns"),
+			want:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getPVCDetails(&tt.nimCache)
+			if got != tt.want {
+				t.Errorf("getPVCDetails() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
